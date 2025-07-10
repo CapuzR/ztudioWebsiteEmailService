@@ -1,4 +1,3 @@
-// src/pages/api/contact.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 type ResponseData = 
@@ -9,43 +8,35 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ResponseData>
 ) {
-  // 1) Solo POST
+  // 1) Siempre responder OPTIONS para el preflight
+  res.setHeader('Access-Control-Allow-Origin', '*');                 // o pon tu dominio concreto
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
+  // 2) Sólo POST
   if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // 2) CORS: orígenes permitidos
-  const allowed = (process.env.ALLOWED_ORIGINS || '')
-    .split(',')
-    .map(u => u.trim());
-  const origin = req.headers.origin;
-  if (!origin || !allowed.includes(origin)) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
+  // 3) Valida origen si no usas '*'
+  // const origin = req.headers.origin;
+  // if (origin !== 'http://a3shf-....localhost:4943') {
+  //   return res.status(403).json({ error: 'Forbidden' });
+  // }
 
-  // 3) Valida payload
+  // 4) Valida el body
   const { name, email, message, categories } = req.body;
-  if (
-    typeof name !== 'string'   ||
-    typeof email !== 'string'  ||
-    typeof message !== 'string'
-  ) {
-    return res.status(400).json({ error: 'Invalid request body' });
-  }
-  if (name.trim().length < 3) {
-    return res.status(400).json({ error: 'Name too short' });
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return res.status(400).json({ error: 'Invalid email' });
-  }
-  if (message.trim().length < 10) {
-    return res.status(400).json({ error: 'Message too short' });
+  if (!name || !email || !message) {
+    return res.status(400).json({ error: 'Missing fields' });
   }
 
-  // 4) Llama al endpoint de EmailJS
+  // 5) Llama a EmailJS
   try {
-    const resp = await fetch(
+    const emailjsResp = await fetch(
       'https://api.emailjs.com/api/v1.0/email/send',
       {
         method: 'POST',
@@ -60,18 +51,15 @@ export default async function handler(
             user_email:   email,
             user_message: message,
             categories:   categories || '',
-            // si tu template usa otras variables (p.e. CONTACT_DEST), añádelas aquí
           }
         })
       }
     );
-
-    if (!resp.ok) {
-      const text = await resp.text();
-      console.error('EmailJS error:', resp.status, text);
-      throw new Error(`EmailJS responded ${resp.status}`);
+    if (!emailjsResp.ok) {
+      const text = await emailjsResp.text();
+      console.error('EmailJS error:', emailjsResp.status, text);
+      throw new Error(`EmailJS ${emailjsResp.status}`);
     }
-
     return res.status(200).json({ ok: true });
   } catch (err: any) {
     console.error('❌ sendEmail error:', err);
